@@ -1,0 +1,9 @@
+<?lua
+	-- Print the first ten digits of the fibonacci sequence
+	local a, b = 0, 1
+	for n=1, 10 do ?>
+		<li><?lua echo(a) ?></li>
+<?lua	a, b = b, a + b
+	end
+	require("env")()
+?>

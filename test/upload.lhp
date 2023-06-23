@@ -1,0 +1,52 @@
+<?lua if REQUEST.method == "GET" then ?>
+	<form method="post" enctype="multipart/form-data">
+		<input type="text" name="foo">
+		<input type="file" name="bar">
+		<input type="text" name="baz">
+		<button type="submit">Submit</button>
+	<form>
+<?lua else
+	local function opairs(t)
+		local keys = {}
+		for k, v in pairs(t) do
+			table.insert(keys, k)
+		end
+		table.sort(keys)
+		local i = 1
+		return function()
+			local k, v = keys[i], t[keys[i]]
+			i = i + 1
+			return k, v
+		end
+	end
+	local form, form_raw = require("cgilib.multipart")(REQUEST.body, REQUEST.content_type) ?>
+	<style>
+		table {
+			border-collapse: collapse;
+			width: 100%
+		}
+
+		td {
+			border: 1px solid black;
+		}
+	</style>
+
+	<table>
+		<?lua for k, v in opairs(form_raw) do ?>
+			<tr>
+				<td><?lua echo(k) ?></td>
+				<td>
+					<table>
+						<?lua for key, value in opairs(v.rawheaders) do ?>
+							<tr>
+								<td><?lua echo(k) ?></td>
+								<td><?lua echo(v) ?></td>
+							</tr>
+						<?lua end ?>
+					</table>
+					<?lua echo(v.data) ?>
+				</td>
+			</tr>
+		<?lua end ?>
+	</table>
+<?lua end ?>

@@ -1,0 +1,20 @@
+<?lua
+	local statuscode, req, srv = ...
+	local errors = {}
+	local function define_code(code, title, text)
+		errors[code] = {title = title, text = text}
+	end
+	define_code(100, "Continue", "(How did we get here?)")
+	define_code(200, "OK", "Success?")
+	define_code(300, "Multiple Choices", "Redirection")
+	define_code(400, "Bad Request", "Malformed, oversized, or invalid request or bad routing.")
+	define_code(500, "Internal Server Error", "No other information is available at this time.")
+	define_code(0, "Unknown Error!", "Looks like someone forgot to define this!")
+	local status = errors[statuscode]
+	if not status then
+		status = errors[0]
+	end
+?>
+<h1><?lua echo(statuscode.." "..status.title) ?></h1>
+<p><?lua echo(status.text) ?></p>
+<p><?lua echo(srv.software) ?></p>
