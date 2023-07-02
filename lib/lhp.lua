@@ -1,14 +1,16 @@
 local lhp = {}
 
 lhp.version = "lhp 0.1"
-lhp.openstring = "<%?lua%s"
+lhp.openstring = "(<%?lua=?)%f[%s]"
+lhp.shortopen = "<%?=?"
 lhp.closestring = "%?>"
+lhp.argsstring = "<%?args%s"
 lhp.lhppath = "./?.lhp;./?/index.lhp"
 lhp.addedenv = {}
 
 function lhp.searcher(package)
 	local checked = {}
-	for path in lhp.lhppath:match("[^;]+") do
+	for path in lhp.lhppath:gmatch("[^;]+") do
 		local fpath = path:gsub("%?", (package:gsub("%.", "/")))
 		local h = io.open(fpath, "r")
 		if h then
@@ -17,6 +19,8 @@ function lhp.searcher(package)
 		end
 		table.insert(checked, "no such file '"..fpath.."'")
 	end
+	--print("e", table.concat(checked, "\n\t"), "a")
+	return table.concat(checked, "\n\t")
 end
 
 function lhp.compile(str)
@@ -31,22 +35,44 @@ function lhp.compile(str)
 			code = code .. "echo(\""..escape(s).."\") "
 		end
 	end
+	local function getline()
+		return select(2, str:sub(1, start):gsub("\n", ""))+1
+	end
 	while true do
 		local chunk
 		local st, en = str:find(lhp.openstring, start)
-		if not st then
+		local sta, ena = str:find(lhp.argsstring, start)
+		local sts, ens = str:find(lhp.shortopen, start)
+		if not sts then
 			chunk = str:sub(start)
 			append(chunk)
 			break
 		end
+		if not st or sts < st then
+			st, en = sts, ens
+		end
+		if sta then
+			if getline() ~= 1 then
+				error("arguments must be on first line of file")
+			end
+			st, en = sta, ena
+		end
+		local echo = str:sub(en, en) == "="
+		--io.stderr:write("[", str:sub(st, en),"]", "\n")
 		local st2, en2 = str:find(lhp.closestring, en+1)
 		if not st2 then
-			error("unexpected eof (missing closing '?>')")
+			error("'?>' expected near <eof>")
 		end
 		chunk = str:sub(start, st-1)
 		append(chunk)
 		chunk = str:sub(en+1, st2-1)
-		code = code .. chunk .. " "
+		if echo then
+			code = code .. " echo("..chunk..") "
+		elseif sta then
+			code = code .. "local "..chunk.." = ... "
+		else
+			code = code .. chunk .. " "
+		end
 		start = en2+1
 	end
 	return code
@@ -120,6 +146,9 @@ function lhp.env(env)
 	function inst.print(...)
 		io.stderr:write(preprint(...).."\n")
 	end
+	
+	inst.include = lhp.include
+	table.insert(inst.package.searchers, lhp.searcher)
 
 	return inst
 end
@@ -147,6 +176,47 @@ end
 
 function lhp.parsefile(file, env)
 	return lhp.loadfile(file, env)()
+end
+
+local function getenv(f)
+	local di = debug.getinfo(f, "u")
+	for i=1, di.nups do
+		local k, v = debug.getupvalue(f, i)
+		if k == "_ENV" then
+			return v
+		end
+	end
+end
+
+local function getcallerenv()
+	local di = debug.getinfo(3, "f")
+	return getenv(di.func)
+end
+
+function lhp.include(pkg)
+	-- acts like the normal `include` but sets the _ENV var to the current _ENV and only caches to the current instance's _OUTPUT var
+	local env = getcallerenv()
+	if not env or not env._OUTPUT then return require(pkg) end
+	local cache = env._OUTPUT.loaded
+	if not cache then
+		cache = {}
+		env._OUTPUT.loaded = cache
+	end
+	if cache[pkg] then return cache[pkg] end
+	local errmsg = ""
+	for i=1, #env.package.searchers do
+		--print(env.package.searchers[i](pkg))
+		local retv, path = env.package.searchers[i](pkg)
+		if type(retv) == "function" then
+			local renv = getenv(retv)
+			setmetatable(renv, {__index = env})
+			cache[pkg] = retv
+			return retv
+		elseif retv then
+			errmsg = errmsg .. "\n\t" .. retv
+		end
+	end
+	error("module '"..pkg.."' not found:"..errmsg, 2)
 end
 
 return lhp
